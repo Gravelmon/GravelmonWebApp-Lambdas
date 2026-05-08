@@ -1,5 +1,5 @@
 it("should process animation nodes via SAM API", async () => {
-    const response = await fetch("http://127.0.0.1:3000/migrate/animation", {
+    const response = await fetch("http://127.0.0.1:3000/migrate/animations", {
         method: "PUT",
         headers: {
             "Content-Type": "application/json",
@@ -10,5 +10,8 @@ it("should process animation nodes via SAM API", async () => {
         ]),
     });
 
+    const body : any = await response.json();
+
     expect(response.status).toBe(200);
-});
+    expect(body.data).toHaveLength(2);
+}, 1000000);

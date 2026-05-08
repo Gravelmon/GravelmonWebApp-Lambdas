@@ -1,5 +1,5 @@
 import { LambdaEvent } from "gravelmon-dynamodb";
-import { handler } from "../../../migration/animation/handler";
+import { handler } from "../../../migration/animations/handler";
 import { BatchWriteItemCommand } from "@aws-sdk/client-dynamodb";
 import { DescribeTableCommand } from "@aws-sdk/client-dynamodb";
 import { mockClient } from "aws-sdk-client-mock";

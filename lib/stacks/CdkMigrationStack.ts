@@ -4,6 +4,7 @@ import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as apigateway from 'aws-cdk-lib/aws-apigateway';
 import * as path from 'path';
+import {RestApi} from "aws-cdk-lib/aws-apigateway";
 
 export class CdkMigrationStack extends cdk.Stack {
     constructor(scope: Construct, id: string, props?: cdk.StackProps) {
@@ -15,10 +16,11 @@ export class CdkMigrationStack extends cdk.Stack {
             default: 'Gravelmon',
         });
 
-        const localEndpointParam = new cdk.CfnParameter(this, 'LocalDynamoEndpoint', {
-            type: 'String',
-            default: '',
-        });
+
+        // API Gateway
+        const api = createApiGateway(this)
+
+        const migrate = api.root.addResource('migrate');
 
         // DynamoDB Table
         const table = new dynamodb.Table(this, 'DynamoTable', {
@@ -47,76 +49,71 @@ export class CdkMigrationStack extends cdk.Stack {
             compatibleRuntimes: [lambda.Runtime.NODEJS_18_X],
         });
 
-        // Lambda Function
-        const relationalFunction = new lambda.Function(this, 'DynamoRelationalFunction', {
-            runtime: lambda.Runtime.NODEJS_18_X,
-            handler: 'dist/migration/animation/handler.handler',
-            code: lambda.Code.fromAsset(path.join(__dirname, '../../dist/migration/animation'), {
-                exclude: ['cdk.out', 'node_modules/.cache', '.git']
-            }) ,
-            timeout: cdk.Duration.seconds(30),
-            layers: [dynamoLayer],
-            environment: {
-                DYNAMODB_TABLE: tableNameParam.valueAsString,
-                DYNAMODB_ENDPOINT: localEndpointParam.valueAsString
-            },
-        });
+        const createMigrationFunction = (name: string, endPoint: string) => {
+            let lowerCaseName = name.toLowerCase()
+            // Lambda Function
+            const animationMigrationFunction = new lambda.Function(this, `${name}MigrationFunction`, {
+                runtime: lambda.Runtime.NODEJS_18_X,
+                handler: `dist/migration/${lowerCaseName}/handler.handler`,
+                code: lambda.Code.fromAsset(path.join(__dirname, `../../dist/migration/${lowerCaseName}`), {
+                    exclude: ['cdk.out', 'node_modules/.cache', '.git']
+                }) ,
+                timeout: cdk.Duration.seconds(30),
+                layers: [dynamoLayer],
+                environment: {
+                    DYNAMODB_TABLE: tableNameParam.valueAsString
+                },
+            });
 
-        // Permissions (equivalent to DynamoDBCrudPolicy)
-        table.grantReadWriteData(relationalFunction);
+            // Permissions (equivalent to DynamoDBCrudPolicy)
+            table.grantReadWriteData(animationMigrationFunction);
 
-        // API Gateway
-        const api = new apigateway.RestApi(this, 'Api', {
-            deployOptions: {
-                stageName: 'Prod',
-            },
-        });
+            const animation = migrate.addResource(endPoint);
 
-        // -------------------------
-        // API KEY SETUP
-        // -------------------------
+            animation.addMethod(
+                'PUT',
+                new apigateway.LambdaIntegration(animationMigrationFunction),
+                {
+                    apiKeyRequired: true,
+                }
+            );
+        };
 
-        const apiKey = api.addApiKey('MigrationApiKey', {
-            apiKeyName: 'migration-api-key',
-            description: 'API key for migration endpoint',
-        });
-
-        const usagePlan = api.addUsagePlan('MigrationUsagePlan', {
-            name: 'MigrationUsagePlan',
-            throttle: {
-                rateLimit: 10,
-                burstLimit: 2,
-            },
-        });
-
-        usagePlan.addApiKey(apiKey);
-
-        usagePlan.addApiStage({
-            stage: api.deploymentStage,
-        });
-
-        const migrate = api.root.addResource('migrate');
-        const animation = migrate.addResource('animation');
-
-        animation.addMethod(
-            'PUT',
-            new apigateway.LambdaIntegration(relationalFunction),
-            {
-                apiKeyRequired: true,
-            }
-        );
-
-        // Outputs
-        new cdk.CfnOutput(this, 'ApiUrl', {
-            value: `${api.url}migrate/animation`,
-        });
-
-        new cdk.CfnOutput(this, 'TableName', {
-            value: table.tableName,
-        });
-
-        new cdk.CfnOutput(this, 'ApiKeyId', {
-            value: apiKey.keyId,
-        });
+        createMigrationFunction("Animations", "animations")
+        createMigrationFunction("Games", "games")
+        createMigrationFunction("Properties", "properties")
     }
+}
+
+function createApiGateway(cdkMigrationStack: CdkMigrationStack):RestApi {
+    let api = new apigateway.RestApi(cdkMigrationStack, 'Api', {
+        deployOptions: {
+            stageName: 'Prod',
+        },
+    });
+
+    const apiKey = api.addApiKey('MigrationApiKey', {
+        apiKeyName: 'migration-api-key',
+        description: 'API key for migration endpoint',
+    });
+
+    const usagePlan = api.addUsagePlan('MigrationUsagePlan', {
+        name: 'MigrationUsagePlan',
+        throttle: {
+            rateLimit: 10,
+            burstLimit: 2,
+        },
+    });
+
+    usagePlan.addApiKey(apiKey);
+
+    usagePlan.addApiStage({
+        stage: api.deploymentStage,
+    });
+
+    new cdk.CfnOutput(cdkMigrationStack, 'ApiKeyId', {
+        value: apiKey.keyId,
+    });
+
+    return api
 }

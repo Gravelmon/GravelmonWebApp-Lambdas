@@ -1,7 +1,8 @@
 import {
+  AnimationNode,
   createAnimationNode,
   createErrorResponse, createSuccessResponse,
-  DynamoDBGraphService,
+  GravelmonDynamoDBService,
   LambdaEvent,
   parseBody,
   PrimaryPoseType
@@ -11,21 +12,15 @@ export const handler = async (event: LambdaEvent) => {
   if (!process.env.DYNAMODB_TABLE) {
     return createErrorResponse(500, "DYNAMODB_TABLE environment variable is required.");
   }
-
-  const dynamoGraphService = new DynamoDBGraphService(process.env.DYNAMODB_TABLE);
-  console.log("DynamoDBGraphService:", dynamoGraphService);
-  console.log("Resolved module path:", require.resolve("gravelmon-dynamodb"));
-  console.log("Service prototype:", Object.getOwnPropertyNames(DynamoDBGraphService.prototype));
-  let tableExists = await dynamoGraphService.tableExists();
-
-  if(!tableExists) return createErrorResponse(500, "Table does not exist");
+  const gravelmonDynamoDBService = new GravelmonDynamoDBService(process.env.DYNAMODB_TABLE);
 
   try {
     const parsed = parseBody<{ name: string, primaryPoseType: PrimaryPoseType }[]>(event);
     const animationNodes = parsed.map(entry=> createAnimationNode(entry.name, entry.primaryPoseType))
-    await dynamoGraphService.batchPutItems(animationNodes);
-    return createSuccessResponse(200, "Successfully created animation nodes")
+    let results = await gravelmonDynamoDBService.batchPutItems(animationNodes) as AnimationNode[];
+    return createSuccessResponse(200, results)
   } catch (error: any) {
+    console.log(error);
     return createErrorResponse(500, error.message || "Internal error");
   }
 };

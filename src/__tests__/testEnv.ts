@@ -4,11 +4,12 @@ import {
     DeleteTableCommand,
     DescribeTableCommand
 } from "@aws-sdk/client-dynamodb";
+import {getDynamoConfig} from "gravelmon-dynamodb";
 
-export function createTestEnv(testName: string) {
-    const tableName = `TestGraphTable_${testName}_${Date.now()}`;
+export function createTestEnv() {
+    const tableName = `Gravelmon`;
 
-    const client = new DynamoDBClient();
+    const client = new DynamoDBClient(getDynamoConfig());
 
     async function createTable() {
         await client.send(

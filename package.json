@@ -6,6 +6,7 @@
   "scripts": {
     "setup-layer": "node scripts/setup-layer.js",
     "start": "npm run setup-layer && sam local start-api --template template.yaml --port 3000",
+    "test:integration": "cross-env NODE_OPTIONS=--experimental-vm-modules jest src/__tests__/it --testMatch='**/*.integration.test.ts' --runInBand",
     "build": "tsc",
     "test": "echo \"No tests configured yet\" && exit 0"
   },
@@ -27,7 +28,9 @@
     "aws-sdk-client-mock": "^4.1.0",
     "esbuild": "0.25.0",
     "jest": "^30.3.0",
+    "ts-jest": "^29.1.0",
     "typescript": "^5.0.0",
-    "dotenv": "^17.4.2"
+    "dotenv": "^17.4.2",
+    "cross-env": "^10.1.0"
   }
 }
