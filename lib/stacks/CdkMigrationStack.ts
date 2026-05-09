@@ -81,7 +81,9 @@ export class CdkMigrationStack extends cdk.Stack {
 
         createMigrationFunction("Animations", "animations")
         createMigrationFunction("Games", "games")
+        createMigrationFunction("Moves", "moves")
         createMigrationFunction("Properties", "properties")
+        createMigrationFunction("FieldEffects", "field-effect")
     }
 }
 
