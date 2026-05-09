@@ -26,11 +26,12 @@ export const handler = async (event: LambdaEvent) => {
                 rebalancedFieldEffectData?: FieldEffectData;
                 fieldEffectFlags: string[];
                 introducedByGames: string[];
+                implemented: boolean;
             }[]
             flags: string[]
         }>(event);
         const fieldEffectNodes = parsed.fieldEffects.map(entry => new FieldEffectNode(
-            entry.displayName, entry.identifier, entry.fieldEffectData, entry.rebalancedFieldEffectData, entry.introducedByGames, entry.fieldEffectFlags))
+            entry.displayName, entry.identifier, entry.fieldEffectData, entry.rebalancedFieldEffectData, entry.introducedByGames, entry.fieldEffectFlags, entry.implemented))
         let fieldEffectResults = await gravelmonDynamoDBService.batchPutItems(fieldEffectNodes) as FieldEffectNode[];
         const flagNodes = parsed.flags.map(entry=> createFieldEffectFlagNode(entry));
         let flagResults = await gravelmonDynamoDBService.batchPutItems(flagNodes) as DynamoNode[];

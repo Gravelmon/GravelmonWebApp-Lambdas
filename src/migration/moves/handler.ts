@@ -34,11 +34,12 @@ export const handler = async (event: LambdaEvent) => {
                 moveData: MoveData;
                 rebalancedMoveData?: MoveData;
                 moveFlags: string[]
+                implemented: boolean;
             }[]
             flags: string[]
         }>(event);
         const moveNodes = parsed.moves.map(entry => new MoveNode(
-            entry.displayName, entry.moveIdentifier, entry.moveData, entry.rebalancedMoveData, entry.moveFlags))
+            entry.displayName, entry.moveIdentifier, entry.moveData, entry.rebalancedMoveData, entry.moveFlags, entry.implemented))
         let moveResults = await gravelmonDynamoDBService.batchPutItems(moveNodes) as MoveNode[];
         const flagNodes = parsed.flags.map(entry=> createMoveFlagNode(entry));
         let flagResults = await gravelmonDynamoDBService.batchPutItems(flagNodes) as DynamoNode[];
