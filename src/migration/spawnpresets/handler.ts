@@ -1,8 +1,11 @@
 import {
-  createErrorResponse, createSuccessResponse, GameData, GameNode,
+  createErrorResponse,
+  createSuccessResponse,
   GravelmonDynamoDBService,
   LambdaEvent,
   parseBody,
+  SpawnPresetNode,
+  SpawnPresetOptions,
 } from "gravelmon-dynamodb";
 
 export const handler = async (event: LambdaEvent) => {
@@ -12,9 +15,9 @@ export const handler = async (event: LambdaEvent) => {
   const gravelmonDynamoDBService = new GravelmonDynamoDBService(process.env.DYNAMODB_TABLE);
 
   try {
-    const parsed = parseBody<{gameData: GameData}[]>(event);
-    const gameNodes = parsed.map(entry=> new GameNode(entry.gameData))
-    let results = await gravelmonDynamoDBService.batchPutItems(gameNodes) as GameNode[];
+    const parsed = parseBody<{spawnPresetOptions: SpawnPresetOptions}[]>(event);
+    const spawnPresetNodes = parsed.map(entry=> new SpawnPresetNode(entry.spawnPresetOptions))
+    let results = await gravelmonDynamoDBService.batchPutItems(spawnPresetNodes) as SpawnPresetNode[];
     return createSuccessResponse(200, results)
   } catch (error: any) {
     console.log(error);

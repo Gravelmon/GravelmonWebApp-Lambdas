@@ -1,23 +1,19 @@
 import {
-    SpeciesFeatureType, ChoiceSpeciesFeatureNode,
-    createEggGroupNode,
+    SpeciesFeatureType,
+    ChoiceSpeciesFeatureNode,
     createErrorResponse,
-    createExperienceGroupNode,
-    createLabelNode,
     createSuccessResponse,
-    DynamoNode, FlagSpeciesFeatureNode,
+    DynamoNode,
+    FlagSpeciesFeatureNode,
     GravelmonDynamoDBService,
     LambdaEvent,
     parseBody,
     NumberRange,
     IntegerSpeciesFeatureNode,
     IntegerSpeciesFeatureDisplay,
-    ResourceLocation, deserializeVector,
+    ResourceLocation, deserializeVector, EggGroupNode, ExperienceGroupNode, LabelNode,
+    PokemonIdentifier,
 } from "gravelmon-dynamodb";
-
-interface BasicNode {
-    name: string;
-}
 
 export const handler = async (event: LambdaEvent) => {
     if (!process.env.DYNAMODB_TABLE) {
@@ -27,9 +23,18 @@ export const handler = async (event: LambdaEvent) => {
 
     try {
         const parsed = parseBody<{
-            eggGroups: BasicNode[],
-            experienceGroups: BasicNode[],
-            labels: BasicNode[],
+            eggGroups: {
+                name: string,
+                pokemonInEggGroup: PokemonIdentifier[];
+            }[],
+            experienceGroups: {
+                name: string,
+                pokemonInExperienceGroups: PokemonIdentifier[];
+            }[],
+            labels: {
+                name: string,
+                pokemonInLabel: PokemonIdentifier[];
+            }[],
             speciesFeatures: {
                 id: string,
                 speciesFeatureName: string,
@@ -46,34 +51,40 @@ export const handler = async (event: LambdaEvent) => {
                     resourceLocation: ResourceLocation,
                     amount: number
                 }[],
-                display?: IntegerSpeciesFeatureDisplay
+                display?: IntegerSpeciesFeatureDisplay,
+                recipients: {
+                    game: string;
+                    pokemon: string;
+                    formName?: string;
+                }[]
             }[]
         }>(event);
 
-        const eggGroupNodes = parsed.eggGroups.map(entry => createEggGroupNode(entry.name))
-        let eggGroupResults = await gravelmonDynamoDBService.batchPutItems(eggGroupNodes) as DynamoNode[];
+        const eggGroupNodes = parsed.eggGroups.map(entry => new EggGroupNode(entry.name, entry.pokemonInEggGroup))
+        let eggGroupResults = await gravelmonDynamoDBService.batchPutItems(eggGroupNodes) as EggGroupNode[];
 
-        const experienceGroupNodes = parsed.experienceGroups.map(entry => createExperienceGroupNode(entry.name))
-        let experienceGroupResults = await gravelmonDynamoDBService.batchPutItems(experienceGroupNodes) as DynamoNode[];
+        const experienceGroupNodes = parsed.experienceGroups.map(entry => new ExperienceGroupNode(entry.name, entry.pokemonInExperienceGroups))
+        let experienceGroupResults = await gravelmonDynamoDBService.batchPutItems(experienceGroupNodes) as ExperienceGroupNode[];
 
-        const labelsNodes = parsed.labels.map(entry => createLabelNode(entry.name))
-        let labelsResults = await gravelmonDynamoDBService.batchPutItems(labelsNodes) as DynamoNode[];
+        const labelsNodes = parsed.labels.map(entry => new LabelNode(entry.name, entry.pokemonInLabel))
+        let labelsResults = await gravelmonDynamoDBService.batchPutItems(labelsNodes) as LabelNode[];
 
         const speciesFeatureNodes = parsed.speciesFeatures.map(entry => {
             const speciesFeatureType = entry.speciesFeatureType;
             const isPrimarySpeciesFeature = entry.isPrimarySpeciesFeature;
             const introducedByGame = entry.introducedByGame;
             const name = entry.speciesFeatureName;
+            const recipients = entry.recipients.map(identifier => PokemonIdentifier.deserialize(identifier));
 
             if (speciesFeatureType === SpeciesFeatureType.Flag) {
-                return new FlagSpeciesFeatureNode(entry.id, name, entry.isDefault, isPrimarySpeciesFeature, introducedByGame);
+                return new FlagSpeciesFeatureNode(entry.id, name, entry.isDefault, isPrimarySpeciesFeature, introducedByGame, recipients);
             } else if (speciesFeatureType === SpeciesFeatureType.Choice) {
                 const choices = entry.choices;
                 if (!choices) {
                     throw new Error("Invalid data for deserializing ChoiceSpeciesFeatureNode: missing choices property");
                 }
                 const defaultOption = entry.defaultValue;
-                return new ChoiceSpeciesFeatureNode(entry.id, name, choices, defaultOption as string, isPrimarySpeciesFeature, introducedByGame);
+                return new ChoiceSpeciesFeatureNode(entry.id, name, choices, defaultOption as string, isPrimarySpeciesFeature, introducedByGame, recipients);
             } else if (speciesFeatureType === SpeciesFeatureType.Integer) {
                 if (!entry.isVisible) {
                     throw new Error("Invalid data for deserializing ChoiceSpeciesFeatureNode: missing isVisible property");
@@ -93,7 +104,7 @@ export const handler = async (event: LambdaEvent) => {
                             amount: itemPoint.amount
                         }
                     }),
-                    introducedByGame,
+                    introducedByGame, recipients,
                     entry.display ? {
                         uiName: entry.display.uiName,
                         color: deserializeVector(entry.display.color),

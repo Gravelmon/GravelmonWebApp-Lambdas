@@ -1,24 +1,15 @@
 import {
-    createErrorResponse, createMoveFlagNode, createSuccessResponse, DynamoNode, createMoveWithFlagEdge, createMoveAssociatedWithFieldEffectEdge,
+    createErrorResponse,
+    createSuccessResponse,
+    DynamoNode,
     GravelmonDynamoDBService,
-    LambdaEvent, MoveData, MoveIdentifier, MoveNode,
-    parseBody, createMoveIsTypeEdge,
+    LambdaEvent,
+    MoveData,
+    MoveIdentifier,
+    MoveNode,
+    parseBody,
+    MoveFlagNode, LearnedByData,
 } from "gravelmon-dynamodb";
-
-async function processMoveDataRelations(move : MoveNode, moveData: MoveData, gravelmonDynamoDBService: GravelmonDynamoDBService) {
-    for (const type of moveData.moveTypes) {
-        await gravelmonDynamoDBService.putItem(createMoveIsTypeEdge(move.moveIdentifier, type));
-    }
-    for (const weather of moveData.associatedWeathers ?? []) {
-        await gravelmonDynamoDBService.putItem(createMoveAssociatedWithFieldEffectEdge(move.moveIdentifier, weather));
-    }
-    for (const terrain of moveData.associatedTerrain ?? []) {
-        await gravelmonDynamoDBService.putItem(createMoveAssociatedWithFieldEffectEdge(move.moveIdentifier, terrain));
-    }
-    for (const fieldEffect of moveData.associatedFieldEffects ?? []) {
-        await gravelmonDynamoDBService.putItem(createMoveAssociatedWithFieldEffectEdge(move.moveIdentifier, fieldEffect));
-    }
-}
 
 export const handler = async (event: LambdaEvent) => {
     if (!process.env.DYNAMODB_TABLE) {
@@ -32,26 +23,28 @@ export const handler = async (event: LambdaEvent) => {
                 moveIdentifier: MoveIdentifier;
                 displayName: string;
                 moveData: MoveData;
+                learnedBy: LearnedByData;
+                rebalancedLearnedBy?: LearnedByData;
                 rebalancedMoveData?: MoveData;
                 moveFlags: string[]
                 implemented: boolean;
             }[]
-            flags: string[]
+            flags: {name:string, moves: MoveIdentifier[]} []
         }>(event);
-        const moveNodes = parsed.moves.map(entry => new MoveNode(
-            entry.displayName, entry.moveIdentifier, entry.moveData, entry.rebalancedMoveData, entry.moveFlags, entry.implemented))
+        const moveNodes = parsed.moves.map(entry =>
+            new MoveNode(
+                entry.displayName,
+                entry.moveIdentifier,
+                entry.moveData,
+                entry.learnedBy,
+                entry.rebalancedMoveData,
+                entry.rebalancedLearnedBy,
+                entry.moveFlags,
+                entry.implemented)
+        )
         let moveResults = await gravelmonDynamoDBService.batchPutItems(moveNodes) as MoveNode[];
-        const flagNodes = parsed.flags.map(entry=> createMoveFlagNode(entry));
+        const flagNodes = parsed.flags.map(entry=> new MoveFlagNode(entry.name, entry.moves));
         let flagResults = await gravelmonDynamoDBService.batchPutItems(flagNodes) as DynamoNode[];
-        for (const moveResult of moveResults) {
-            for (const flag of moveResult.moveFlags) {
-                await gravelmonDynamoDBService.putItem(createMoveWithFlagEdge(moveResult.moveIdentifier, flag));
-            }
-            await processMoveDataRelations(moveResult, moveResult.moveData, gravelmonDynamoDBService);
-            if (moveResult.rebalancedMoveData) {
-                await processMoveDataRelations(moveResult, moveResult.rebalancedMoveData, gravelmonDynamoDBService);
-            }
-        }
         return createSuccessResponse(200, {
             moves: moveResults,
             flags: flagResults

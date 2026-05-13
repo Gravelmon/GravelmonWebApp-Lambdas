@@ -1,15 +1,8 @@
 import {
-    createErrorResponse, createFieldEffectFlagNode, createSuccessResponse, DynamoNode, createFieldEffectWithFlagEdge,
-    GravelmonDynamoDBService,
+    createErrorResponse, createSuccessResponse, DynamoNode, GravelmonDynamoDBService,
     LambdaEvent, FieldEffectData, FieldEffectIdentifier, FieldEffectNode,
-    parseBody, createFieldEffectIsTypeEdge,
+    parseBody, MoveIdentifier, AbilityIdentifier, FieldEffectFlagNode,
 } from "gravelmon-dynamodb";
-
-async function processFieldEffectDataRelations(fieldEffect : FieldEffectNode, fieldEffectData: FieldEffectData, gravelmonDynamoDBService: GravelmonDynamoDBService) {
-    for (const type of fieldEffectData.associatedTypes ?? []) {
-        await gravelmonDynamoDBService.putItem(createFieldEffectIsTypeEdge(fieldEffect.identifier, type));
-    }
-}
 
 export const handler = async (event: LambdaEvent) => {
     if (!process.env.DYNAMODB_TABLE) {
@@ -24,26 +17,33 @@ export const handler = async (event: LambdaEvent) => {
                 identifier: FieldEffectIdentifier;
                 fieldEffectData: FieldEffectData;
                 rebalancedFieldEffectData?: FieldEffectData;
+                associatedMoves: MoveIdentifier[];
+                associatedAbilities: AbilityIdentifier[];
                 fieldEffectFlags: string[];
                 introducedByGames: string[];
                 implemented: boolean;
             }[]
-            flags: string[]
+            flags: {
+                name: string
+                fieldEffects: FieldEffectIdentifier[]
+            }[]
         }>(event);
-        const fieldEffectNodes = parsed.fieldEffects.map(entry => new FieldEffectNode(
-            entry.displayName, entry.identifier, entry.fieldEffectData, entry.rebalancedFieldEffectData, entry.introducedByGames, entry.fieldEffectFlags, entry.implemented))
+        const fieldEffectNodes = parsed.fieldEffects
+            .map(entry => new FieldEffectNode(
+                entry.displayName,
+                entry.identifier,
+                entry.fieldEffectData,
+                entry.associatedMoves,
+                entry.associatedAbilities,
+                entry.rebalancedFieldEffectData,
+                entry.introducedByGames,
+                entry.fieldEffectFlags,
+                entry.implemented
+                )
+            )
         let fieldEffectResults = await gravelmonDynamoDBService.batchPutItems(fieldEffectNodes) as FieldEffectNode[];
-        const flagNodes = parsed.flags.map(entry=> createFieldEffectFlagNode(entry));
+        const flagNodes = parsed.flags.map(entry=> new FieldEffectFlagNode(entry.name, entry.fieldEffects));
         let flagResults = await gravelmonDynamoDBService.batchPutItems(flagNodes) as DynamoNode[];
-        for (const fieldEffectResult of fieldEffectResults) {
-            for (const flag of fieldEffectResult.fieldEffectFlags) {
-                await gravelmonDynamoDBService.putItem(createFieldEffectWithFlagEdge(fieldEffectResult.identifier, flag));
-            }
-            await processFieldEffectDataRelations(fieldEffectResult, fieldEffectResult.fieldEffectData, gravelmonDynamoDBService);
-            if (fieldEffectResult.rebalancedFieldEffectData) {
-                await processFieldEffectDataRelations(fieldEffectResult, fieldEffectResult.rebalancedFieldEffectData, gravelmonDynamoDBService);
-            }
-        }
         return createSuccessResponse(200, {
             fieldEffects: fieldEffectResults,
             flags: flagResults
